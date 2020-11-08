@@ -168,6 +168,8 @@ class BiDAF(nn.Module):
         cq_att=torch.stack(cq,dim=-1)#(batch_size,context_len,question_len)
         S=c_att+q_att+cq_att#(batch_size,context_len,question_len)
 
+        C2Q=torch.bmm(F.softmax(S,dim=2),question)
+
         S_=torch.max(S,dim=2)[0]#S_.shape==(batch_size,context_length)
         b=F.softmax(S_,dim=1).unsqueeze(1)
         #b.shape==(batch_size,1,context_len)

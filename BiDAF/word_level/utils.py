@@ -22,12 +22,12 @@ def get_metrics(start_pred_ids,end_pred_ids,batch_qa_ids,eval_examples):
         #这个qa_id对应的样本就是start_pred_ids[i]和end_pred_ids[i]对应的样本
         #迭代batch_size个样本的每一个example
         example=eval_examples[str(qa_id)]
-        context=example["context"] 
+        context=example["context"]#list
         spans=example["spans"]
-        answer_text=example["answer_text"]#真实答案文本
+        answer_text=example["answer_text"]#list
         start_ids,end_ids=spans#这个是真实标签
 
-        predict_answer_text=context[start_pred_ids[i]:end_pred_ids[i]]#预测答案文本
+        predict_answer_text=context[start_pred_ids[i]:end_pred_ids[i]]#预测的list
         #这里需要注意的是，example中的终止位置=start_position+len(answer_text)，所以end_position这个标签已经是答案的后一个单词了
         #所以我们预测出来的end_pred_ids不应该加1
         #根据真实答案文本和预测答案文本就可以计算em和f1了

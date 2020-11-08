@@ -32,14 +32,15 @@ def get_word_level_example(example):
         else:
             #print(answer_word_list,context_word_list[word_start_pos:word_end_pos])
             return None
-    return {"context":context_word_list,"question":list(jieba.cut(question)),"answer":{"text":answer_word_list,"start_position":word_start_pos,"end_position"}}
+    return {"context":context_word_list,"question":list(jieba.cut(question)),
+            "answer":{"text":answer_word_list,"start_position":word_start_pos,"end_position":word_end_pos,"original_text":answer}}
 
-examples=[]
-data_folder="./data"
-files_name=["my_cmrc2018.json","my_dureader.json","my_military.json","my_cail2019.json"]
-bad_examples=0
-for file_name in files_name:
-    file_=os.path.join(data_folder,file_name)
+train_file="./data/train.json"
+test_file="./data/test.json"
+
+def get_examples(file_):
+    examples=[]
+    bad_examples=0
     with open(file_,encoding="utf-8") as f:
         lines=f.readlines()
     for line in lines:
@@ -52,22 +53,21 @@ for file_name in files_name:
         else:
             bad_examples+=1
             continue
-print("bad exampple nums : ",bad_examples)
-print("total example nums : ",len(examples))
+    print("bad exampple nums : ",bad_examples)
+    print("total example nums : ",len(examples))
+    return examples
 
-random.shuffle(examples)
-all_example_nums=len(examples)
-print(all_example_nums)
-train_examples=examples[:int(all_example_nums*0.8)]
-test_examples=examples[int(all_example_nums*0.8):]
+
+train_examples=get_examples(file_=train_file)
+test_examples=get_examples(file_=test_file)
 
 print(len(train_examples),len(test_examples))
-with open("./data/train.json","w") as f:
+with open("./data/train_wordlevel.json","w") as f:
     for example in train_examples:
         f.write(json.dumps(example,ensure_ascii=False)+"\n")
 
-print("Train dataset has been constructed!")
-with open("./data/test.json","w") as f:
+print("Train wordlevel dataset has been constructed!")
+with open("./data/test_wordlevel.json","w") as f:
     for example in test_examples:
         f.write(json.dumps(example,ensure_ascii=False)+"\n")
-print("Test dataset has been constructed!")
+print("Test wordlevel dataset has been constructed!")

@@ -31,7 +31,7 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
 
             context=example["context"]
             context_length=len(context)#有多少个单词，而不是有多少个字
-            answer_text=example["answer"]["text"]
+            answer_text=example["answer"]["text"]#answer_text也仍然是list
             start_position=example["answer"]["start_position"]
             end_position=example["answer"]["end_position"]
             question=example["question"]
@@ -44,11 +44,11 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
             #####对于单词级别来说，我们不考虑切割，因为分词后的长度通常不会大于512
 
             new_example={"unique_qa_id":unique_qa_id,"context":context,"question":question,
-                         "answer":{"text":answer_text,"start_position":start_pos,"end_position":end_pos}}
+                         "answer":{"text":answer_text,"start_position":start_position,"end_position":end_position,"original_text":example["answer"]["original_text"]}}
             examples.append(new_example)
             eval_examples[str(unique_qa_id)]={"context":context,
-                                            "spans":[start_pos,end_pos],
-                                            "answer_text":answer_text}
+                                            "spans":[start_position,end_position],
+                                            "answer_text":answer_text,"original_text":example["answer"]["original_text"]}
             #context是context的单词list，question和answer_text也都是单词list，start_position指的是
             #答案在context_list中的第一个单词的下标，end_position指的是答案在context_list中的最后一个的下标的后一个
             unique_qa_id+=1
@@ -62,6 +62,7 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
     print("unknown question examples : %d , not unk question examples : %d"%(unk_example_nums,len(examples)))
     return examples,word2id,eval_examples
 
+
 def convert_to_ids(examples,word2id):
     features=[]
     def get_word_id(word):
@@ -72,13 +73,15 @@ def convert_to_ids(examples,word2id):
 
     for example in examples:
         qa_id=example["unique_qa_id"]
-        context=example["context"]
-        question=example["question"]
+        context=example["context"]#list
+        question=example["question"]#list
         context_ids=[get_word_id(word) for word in context]
         question_ids=[get_word_id(word) for word in question]
         features.append({"unique_qa_id":qa_id,"context_ids":context_ids,"question_ids":question_ids,
                         "start_position":example["answer"]["start_position"],
-                        "end_position":example["answer"]["end_position"]})
+                        "end_position":example["answer"]["end_position"],
+                        "original_text":example["answer"]["original_text"],
+                        "context":context})
     return features
 
 def convert_to_words(features,word2id):
@@ -90,13 +93,13 @@ def convert_to_words(features,word2id):
         qa_id=feature["unique_qa_id"]
         context_ids=feature["context_ids"]
         question_ids=feature["question_ids"]
-        context=""
+        context=[]
         for id_ in context_ids:
-            context+=id2word[id_]
-        question=""
+            context.append(id2word[id_])
+        question=[]
         for id_ in question_ids:
-            question+=id2word[id_]
-        answer=context[feature["start_position"]:feature["end_position"]]
+            question.append(id2word[id_])
+        answer=context[feature["start_position"]:feature["end_position"]]#不要加1
         examples.append({"unique_qa_id":qa_id,"context":context,"question":question,
                         "answer":{"text":answer,"start_position":feature["start_position"],"end_position":feature["end_position"]}})
     return examples
