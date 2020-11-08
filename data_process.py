@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from collections import Counter
 
-def read_data(json_files,word_limit_freq=10):
+def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
     if type(json_files)!=list:
         json_files=[json_files]
     examples=[]
@@ -12,7 +12,7 @@ def read_data(json_files,word_limit_freq=10):
     unk_example_nums=0
     unique_qa_id=0
     for json_file in json_files:
-        with open(json_file) as f:
+        with open(json_file,encoding="utf-8") as f:
             lines=f.readlines()
         for line in lines:
             example=json.loads(line.strip())
@@ -26,24 +26,63 @@ def read_data(json_files,word_limit_freq=10):
                 continue#最初不考虑无答案问题，循序渐进
             else:
                 example["answer"]["end_position"]=len(str(example["answer"]["text"]))+example["answer"]["start_position"]
+            
             context=example["context"]
-            assert type(context)==str
+            context_length=len(context)
+            answer_text=example["answer"]["text"]
+            start_position=example["answer"]["start_position"]
+            end_position=example["answer"]["end_position"]
+            question=example["question"]
+            
             for word in context:
                 all_words.append(word)
             all_words.append(char for char in example["context"])
-            example["unique_qa_id"]=unique_qa_id
-            eval_examples[str(unique_qa_id)]={"context":context,
-                                            "spans":[example["answer"]["start_position"],example["answer"]["end_position"]],
-                                            "answer_text":example["answer"]["text"]}
-            unique_qa_id+=1
-            examples.append(example)
+            
+            ##########################切割context######################################
+            split_context_list=[]#记录每一个分割的context的字符串
+            split_answerspan_list=[]#记录每一个分割的context对应的answer_span
+            if len(context)>=max_context_length:
+                start_offset=0
+                while True:
+                    length=context_length-start_offset
+                    #print(length,start_offset,max_context_length,context_length)
+                    if length>=max_context_length:
+                        length=max_context_length
+                    
+                    split_context=context[start_offset:(start_offset+length)]
+                    start_pos=split_context.find(str(answer_text))
+                    end_pos=start_pos+len(str(answer_text))
+                    if start_pos==-1 or end_pos>len(split_context):
+                        end_pos=-1
+                    #assert start_pos!=-1 and end_pos<len(split_context)
+                    if start_pos!=-1 and end_pos!=-1:
+                        split_context_list.append(split_context)
+                        split_answerspan_list.append((start_pos,end_pos))
+                    if (start_offset+length)==context_length:
+                        break
+                    start_offset+=min(doc_stride,length)
+            ###########################################################################
+            else:
+                split_context_list.append(context)
+                split_answerspan_list.append((start_position,end_position))
+            
+            for each_context,corespond_answer_span in zip(split_context_list,split_answerspan_list):
+                (start_pos,end_pos)=corespond_answer_span
+                assert start_pos==each_context.find(str(answer_text))
+                new_example={"unique_qa_id":unique_qa_id,"context":each_context,"question":question,
+                             "answer":{"text":answer_text,"start_position":start_pos,"end_position":end_pos}}
+                examples.append(new_example)
+                eval_examples[str(unique_qa_id)]={"context":each_context,
+                                                "spans":[start_pos,end_pos],
+                                                "answer_text":answer_text}
+                unique_qa_id+=1
     counter_words=Counter(all_words)
     sorted_words=sorted(counter_words.items(),key=lambda x:x[1],reverse=True)
     word2id={"[PAD]":0,"[UNK]":1}
     for word,word_freq in sorted_words:
         if word_freq>word_limit_freq:
             word2id[word]=len(word2id)
-    print("unknown question examples : %d , total examples : %d"%(unk_example_nums,len(examples)))
+    print("unknown question examples : %d , not unk question examples : %d"%(unk_example_nums,len(examples)))
     return examples,word2id,eval_examples
 
 def convert_to_ids(examples,word2id):
@@ -74,8 +113,6 @@ def convert_to_words(features,word2id):
         qa_id=feature["unique_qa_id"]
         context_ids=feature["context_ids"]
         question_ids=feature["question_ids"]
-        start_position=feature["start_position"]
-        end_position=feature["end_position"]
         context=""
         for id_ in context_ids:
             context+=id2word[id_]
@@ -87,28 +124,6 @@ def convert_to_words(features,word2id):
                         "answer":{"text":answer,"start_position":feature["start_position"],"end_position":feature["end_position"]}})
     return examples
 
-
-# class DataSet(torch.utils.data.DataSet):
-# 	def __init__(self,examples,word2id,config,is_train=True):
-# 		super(DataSet,self).__init__()
-# 		self.context_len_limit=config.train_context_len_limit if is_train else config.test_context_len_limit
-# 		self.question_len_limit=config.train_question_len_limit if is_train else config.test_question_len_limit
-
-# 		self.features=convert_to_ids(examples,word2id)
-# 		#features的每一个值是一个dict，keys=={"context_ids","question_ids","start_position","end_position"}
-
-# 	def __len__(self):
-# 		return len(self.features)
-
-# 	def __getitem__(self,idx):
-
-class Config:
-    def __init__(self):
-        self.train_question_len_limit=48
-        self.train_context_len_limit=448
-        self.test_question_len_limit=48
-        self.test_context_len_limit=512
-config=Config()
 
 def pad_features(features,config,is_train=True):
     '''

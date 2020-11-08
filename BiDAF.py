@@ -168,6 +168,12 @@ class BiDAF(nn.Module):
         cq_att=torch.stack(cq,dim=-1)#(batch_size,context_len,question_len)
         S=c_att+q_att+cq_att#(batch_size,context_len,question_len)
 
+
+        if question_mask is not None:
+            question_mask=1.0-question_mask.long()
+            question_mask*=(-1e30)
+            question_mask=question_mask.unsqueeze(dim=1).expand(-1,c_length,-1)
+            S+=question_mask
         #接下来计算C2Q，也就是将S在question_len维度上softmax后对question做加权平均
         C2Q=torch.bmm(F.softmax(S,dim=2),question)#(batch_size,context_len,hidden_size*2)
         #C2Q也称为question_aware context representation，它是关注了question的context表示
@@ -175,7 +181,16 @@ class BiDAF(nn.Module):
         #接下来计算Q2C，计算方式是对S的最后一个维度，也就是question_len上做最大池化，得到tensor的shape==(batch_size,context_len)
         #然后在context_len上做softmax，再与context做加权求和，这样得到的是一个固定长度的tensor，长度为hidden_size*2，
         #然后把这个tensor重复context_len次
-        b=F.softmax(torch.max(S,dim=2)[0],dim=1).unsqueeze(1)
+        
+        S_=torch.max(S,dim=2)[0]#S_.shape==(batch_size,context_length)
+
+        if context_mask is not None:
+            #context_mask是bool类型，context_ids.bool()，所以pad位置的值是False
+            context_mask=1.0-context_mask.long()#pad位置是1，不是pad位置是0 context_mask.shape==(batch_size,context_len)
+            context_mask*=(-1e30)#pad位置是-1e30,不是pad的位置还是0
+            S_+=context_mask
+        
+        b=F.softmax(S_,dim=1).unsqueeze(1)
         #b.shape==(batch_size,1,context_len)
         Q2C=torch.bmm(b,context)#(batch_size,1,hidden_size*2)
         Q2C=Q2C.expand(-1,c_length,-1)#(batch_size,context_len,hidden_size*2)
@@ -206,7 +221,8 @@ class BiDAF(nn.Module):
         context=self.contextLSTM(context,context_lengths)
         question=self.contextLSTM(question,question_lengths)
         #num_layers=1,bidirectional=True (batch_size,seq_length,hidden_size*2)
-        G=self.bi_attention_flow(context=context,question=question)#(batch_size,context_len,hidden_size*2*4)
+        G=self.bi_attention_flow(context=context,question=question,context_mask=context_ids.bool(),question_mask=question_ids.bool())
+        #(batch_size,context_len,hidden_size*2*4)
 
         M=self.ModelingLSTM(G,context_lengths)
         M2=self.ModelingLSTM2(M,context_lengths)

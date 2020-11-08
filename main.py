@@ -119,7 +119,7 @@ def test(model,config,test_dataloader,eval_examples):
 class Config:
     def __init__(self):
         self.train_question_len_limit=48
-        self.train_context_len_limit=512
+        self.train_context_len_limit=448
         self.test_question_len_limit=48
         self.test_context_len_limit=512
         #self.vocab_size=len(word2id)
@@ -138,21 +138,17 @@ class Config:
         self.test_step=300
         self.save_model_path="./saved_best_model/"
         self.log_dir="./log_dir/"
+        self.train_file_path="./data/train.json"
+        self.test_file_path="./data/test.json"
 
     def add_vocab_size(self,vocab_size):
         self.vocab_size=vocab_size
 def main():
-    json_files=[]
     config=Config()
     
-    for file_name in config.files_name:
-        json_files.append(os.path.join(config.data_folder,file_name))
-    examples,word2id,eval_examples=read_data(json_files)#我们根据qa_id就可以得到对应的example
-    random.shuffle(examples)#打乱数据
+    train_examples,word2id,train_eval_examples=read_data(config.train_file_path,max_context_length=config.train_context_len_limit)#我们根据qa_id就可以得到对应的example
     config.add_vocab_size(len(word2id))
-    total_examples_nums=len(examples)
-    train_examples=examples[:int(total_examples_nums*0.8)]
-    test_examples=examples[int(total_examples_nums*0.8):]
+    test_examples,_,test_eval_examples=read_data(config.test_file_path,max_context_length=config.test_context_len_limit)
 
     train_features=convert_to_ids(train_examples,word2id)
     test_features=convert_to_ids(test_examples,word2id)
@@ -169,7 +165,7 @@ def main():
     train_dataloader=get_dataloader(train_features,batch_size=config.train_batch_size)
     test_dataloader=get_dataloader(test_features,batch_size=config.test_batch_size,is_train=False)
 
-    train(config,train_dataloader=train_dataloader,test_dataloader=test_dataloader,eval_examples=eval_examples)
+    train(config,train_dataloader=train_dataloader,test_dataloader=test_dataloader,eval_examples=test_eval_examples)
 
 
 main()
