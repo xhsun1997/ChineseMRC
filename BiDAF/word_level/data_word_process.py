@@ -20,7 +20,7 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
             lines=f.readlines()
         for line in lines:
             example=json.loads(line.strip())
-            if len(example["context"])<=1 or len(example["question"])<=1:
+            if len(example["context"])<1 or len(example["question"])<1:
                 print("bad example : ",example)
                 continue
 
@@ -46,7 +46,7 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
             new_example={"unique_qa_id":unique_qa_id,"context":context,"question":question,
                          "answer":{"text":answer_text,"start_position":start_pos,"end_position":end_pos}}
             examples.append(new_example)
-            eval_examples[str(unique_qa_id)]={"context":each_context,
+            eval_examples[str(unique_qa_id)]={"context":context,
                                             "spans":[start_pos,end_pos],
                                             "answer_text":answer_text}
             #context是context的单词list，question和answer_text也都是单词list，start_position指的是
