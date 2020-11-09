@@ -15,6 +15,7 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
     all_words=[]
     unk_example_nums=0
     unique_qa_id=0
+    position_bad_nums=0
     for json_file in json_files:
         with open(json_file,encoding="utf-8") as f:
             lines=f.readlines()
@@ -35,6 +36,10 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
             start_position=example["answer"]["start_position"]
             end_position=example["answer"]["end_position"]
             question=example["question"]
+            
+            if end_position>=context_length-1 or start_position>=context_length-1:
+                position_bad_nums+=1
+                continue
             #全部都是list
             for word in context:
                 all_words.append(word)#真正的word
@@ -42,7 +47,6 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
             ##########################切割context######################################
 
             #####对于单词级别来说，我们不考虑切割，因为分词后的长度通常不会大于512
-
             new_example={"unique_qa_id":unique_qa_id,"context":context,"question":question,
                          "answer":{"text":answer_text,"start_position":start_position,"end_position":end_position,"original_text":example["answer"]["original_text"]}}
             examples.append(new_example)
@@ -60,6 +64,7 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
         if word_freq>word_limit_freq:
             word2id[word]=len(word2id)
     print("unknown question examples : %d , not unk question examples : %d"%(unk_example_nums,len(examples)))
+    print("position_bad_nums : ",position_bad_nums)
     return examples,word2id,eval_examples
 
 

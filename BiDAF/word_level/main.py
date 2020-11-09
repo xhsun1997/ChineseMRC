@@ -3,7 +3,7 @@ import argparse
 import torch
 import torch.nn as nn
 from BiDAF import BiDAF
-from data_process import *
+from data_word_process import *
 from utils import get_metrics
 import pickle
 from tensorboardX import SummaryWriter
@@ -16,6 +16,7 @@ print("device : ",device)
 def train(config,train_dataloader,test_dataloader,eval_examples):
     writer=SummaryWriter(log_dir=config.log_dir)
     model=BiDAF(config)
+    model.load_state_dict(torch.load("/home/sun_xh/xhsun/ChineseMRC/saved_best_model/model562.bin"))
     optimizer=torch.optim.Adam(model.parameters(),lr=config.learning_rate)
     scheduler=torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,"min",factor=0.8,patience=3,verbose=True)
     #patience是指，如果第四个epochs都没有下降的话，那么new_lr=factor*orig_lr
@@ -35,7 +36,9 @@ def train(config,train_dataloader,test_dataloader,eval_examples):
         for step,batch_data in enumerate(train_dataloader):
             batch_qa_ids,context_ids,question_ids,start_positions,end_positions=batch_data
             start_logits,end_logits=model(context_ids,question_ids)
-
+            (batch_size,context_actual_length)=start_logits.size()
+            # try:
+            #     assert context_actual_length max(end_positions.tolist())
             optimizer.zero_grad()
 
             batch_loss=0.5*criterion(start_logits,start_positions.to(device))+0.5*criterion(end_logits,end_positions.to(device))
@@ -87,11 +90,13 @@ def test(model,config,test_dataloader,eval_examples):
             batch_qa_ids,context_ids,question_ids,start_positions,end_positions=batch_data
             start_logits,end_logits=model(context_ids,question_ids)
 
-            ignore_index=start_logits.size(1)
-            start_positions.clamp_(0,ignore_index)
-            end_positions.clamp_(0,ignore_index)
-            start_loss=nn.CrossEntropyLoss(ignore_index=ignore_index)(start_logits,start_positions.to(device))
-            end_loss=nn.CrossEntropyLoss(ignore_index=ignore_index)(end_logits,end_positions.to(device))
+            #ignore_index=start_logits.size(1)
+            #start_positions.clamp_(0,ignore_index)
+            #end_positions.clamp_(0,ignore_index)
+            #start_loss=nn.CrossEntropyLoss(ignore_index=ignore_index)(start_logits,start_positions.to(device))
+            #end_loss=nn.CrossEntropyLoss(ignore_index=ignore_index)(end_logits,end_positions.to(device))
+            start_loss=criterion(start_logits,start_positions.to(device))
+            end_loss=criterion(end_logits,end_positions.to(device))
             loss+=(0.5*start_loss+0.5*end_loss).item()
 
             batch_size,context_len=start_logits.size()
@@ -131,15 +136,15 @@ class Config:
         self.epochs=20
         self.gradient_accumulation_steps=1
         self.print_loss_step=100
-        self.data_folder="./data"
+        self.data_folder="/home/sun_xh/xhsun/ChineseMRC/data"
         self.files_name=["my_cmrc2018.json","my_dureader.json","my_military.json","my_cail2019.json"]
         self.train_batch_size=48
         self.test_batch_size=48
         self.test_step=300
-        self.save_model_path="./saved_best_model/"
-        self.log_dir="./log_dir/"
-        self.train_file_path="./data/train.json"
-        self.test_file_path="./data/test.json"
+        self.save_model_path="/home/sun_xh/xhsun/ChineseMRC/saved_best_model/"
+        self.log_dir="/home/sun_xh/xhsun/ChineseMRC/log_dir/"
+        self.train_file_path="/home/sun_xh/xhsun/ChineseMRC/data/train_wordlevel.json"
+        self.test_file_path="/home/sun_xh/xhsun/ChineseMRC/data/test_wordlevel.json"
 
     def add_vocab_size(self,vocab_size):
         self.vocab_size=vocab_size
@@ -148,6 +153,7 @@ def main():
     
     train_examples,word2id,train_eval_examples=read_data(config.train_file_path,max_context_length=config.train_context_len_limit)#我们根据qa_id就可以得到对应的example
     config.add_vocab_size(len(word2id))
+    print("length of word2id : ",len(word2id))
     test_examples,_,test_eval_examples=read_data(config.test_file_path,max_context_length=config.test_context_len_limit)
 
     train_features=convert_to_ids(train_examples,word2id)
