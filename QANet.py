@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import math
 import numpy as np
 
+
+device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def positional_encoding_(inputs,mask=None):
     '''
     函数用来获得位置编码，返回的shape和inputs一样
@@ -24,7 +26,7 @@ def positional_encoding_(inputs,mask=None):
 
     # lookup
     position_enc=position_enc.unsqueeze(0).expand(batch_size,-1,-1)
-    return position_enc
+    return position_enc.to(device)
 
 class LayerNorm(nn.Module):
     '''
@@ -32,12 +34,13 @@ class LayerNorm(nn.Module):
     '''
     def __init__(self,hidden_size):
         super(LayerNorm,self).__init__()
-        self.gamma=torch.ones([hidden_size])
-        self.beta=torch.zeros([hidden_size])
+        self.gamma=torch.ones([hidden_size]).to(device)
+        self.beta=torch.zeros([hidden_size]).to(device)
     def forward(self,inputs,epsilon=1e-5):
         mean=torch.mean(inputs,dim=2,keepdim=True)
         variance=torch.mean((inputs-mean)**2,dim=2,keepdim=True)
         normalize_inputs=(inputs-mean)/torch.sqrt(variance+epsilon)
+        #print(self.gamma.device,self.beta.device,normalize_inputs.device)
         return self.gamma*normalize_inputs+self.beta
 
 def layer_dropout(layer_inputs,layer_outputs,dropout_of_this_layer):
@@ -338,7 +341,9 @@ class QANet(nn.Module):
         question_mask=question_ids.bool()
 
         context=self.word_embedding(context_ids)
+        context+=positional_encoding_(context)
         question=self.word_embedding(question_ids)
+        question+=positional_encoding_(question)
         #(batch_size,seq_length,embed_dim)
         context=self.highway_network_layer(inputs=context)
         question=self.highway_network_layer(inputs=question)
