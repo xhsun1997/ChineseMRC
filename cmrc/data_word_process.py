@@ -25,11 +25,6 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
                 print("bad example : ",example)
                 continue
 
-            if example["answer"]["text"]=="null" or example["answer"]["start_position"]==-1:
-                #example["answer"]['end_position']=-1
-                unk_example_nums+=1
-                continue#最初不考虑无答案问题，循序渐进
-
             context=example["context"]
             context_length=len(context)#有多少个单词，而不是有多少个字
             answer_text=example["answer"]["text"]#answer_text也仍然是list
@@ -37,7 +32,7 @@ def read_data(json_files,max_context_length,doc_stride=128,word_limit_freq=10):
             end_position=example["answer"]["end_position"]
             question=example["question"]
             
-            if end_position>=context_length-1 or start_position>=context_length-1:
+            if end_position>context_length-1 or start_position>context_length-1:
                 position_bad_nums+=1
                 continue
             #全部都是list
@@ -89,25 +84,25 @@ def convert_to_ids(examples,word2id):
                         "context":context})
     return features
 
-def convert_to_words(features,word2id):
-    examples=[]
-    id2word={id_:word for word,id_ in word2id.items()}
-    if type(features)!=list:
-        features=[features]
-    for feature in features:
-        qa_id=feature["unique_qa_id"]
-        context_ids=feature["context_ids"]
-        question_ids=feature["question_ids"]
-        context=[]
-        for id_ in context_ids:
-            context.append(id2word[id_])
-        question=[]
-        for id_ in question_ids:
-            question.append(id2word[id_])
-        answer=context[feature["start_position"]:feature["end_position"]]#不要加1
-        examples.append({"unique_qa_id":qa_id,"context":context,"question":question,
-                        "answer":{"text":answer,"start_position":feature["start_position"],"end_position":feature["end_position"]}})
-    return examples
+#def convert_to_words(features,word2id):
+#    examples=[]
+#    id2word={id_:word for word,id_ in word2id.items()}
+#    if type(features)!=list:
+#        features=[features]
+#    for feature in features:
+#        qa_id=feature["unique_qa_id"]
+#        context_ids=feature["context_ids"]
+#        question_ids=feature["question_ids"]
+#        context=[]
+#        for id_ in context_ids:
+#            context.append(id2word[id_])
+#        question=[]
+#        for id_ in question_ids:
+#            question.append(id2word[id_])
+#        answer=context[feature["start_position"]:feature["end_position"]]#不要加1
+#        examples.append({"unique_qa_id":qa_id,"context":context,"question":question,
+#                        "answer":{"text":answer,"start_position":feature["start_position"],"end_position":feature["end_position"]}})
+#    return examples
 
 
 def pad_features(features,config,is_train=True):

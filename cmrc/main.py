@@ -2,7 +2,7 @@ import os
 import argparse
 import torch
 import torch.nn as nn
-from BiDAF import BiDAF
+from BiDAF import Model
 from data_word_process import *
 from utils import get_metrics
 import pickle
@@ -13,23 +13,18 @@ device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("device : ",device)
 
 #sed -n "line1,line2p" file | tee target_file
-def train(config,train_dataloader,test_dataloader,eval_examples):
+def train(config,train_dataloader,test_dataloader,train_eval_examples,test_eval_examples):
     writer=SummaryWriter(log_dir=config.log_dir)
-    model=BiDAF(config)
-    model.load_state_dict(torch.load("/home/sun_xh/xhsun/ChineseMRC/saved_best_model/model562.bin"))
+    model=Model(config)
+    model.to(device)
     optimizer=torch.optim.Adam(model.parameters(),lr=config.learning_rate)
     scheduler=torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,"min",factor=0.8,patience=3,verbose=True)
     #patience是指，如果第四个epochs都没有下降的话，那么new_lr=factor*orig_lr
     criterion=nn.CrossEntropyLoss()
 
-    model.to(device)
     model.train()
     loss=0
     best_f1_score=0
-    training_loss_record=[]
-    test_loss_record=[]
-    test_f1_record=[]
-    test_em_record=[]
 
     for epoch in range(config.epochs):
 
@@ -37,45 +32,42 @@ def train(config,train_dataloader,test_dataloader,eval_examples):
             batch_qa_ids,context_ids,question_ids,start_positions,end_positions=batch_data
             start_logits,end_logits=model(context_ids,question_ids)
             (batch_size,context_actual_length)=start_logits.size()
-            # try:
-            #     assert context_actual_length max(end_positions.tolist())
-            optimizer.zero_grad()
 
             batch_loss=0.5*criterion(start_logits,start_positions.to(device))+0.5*criterion(end_logits,end_positions.to(device))
             loss+=batch_loss.item()
             batch_loss.backward()
-            optimizer.step()
 
-            #if (step+1)%config.gradient_accumulation_steps==0:
+            if (step+1)%config.gradient_accumulation_steps==0:
+                optimizer.step()
+                optimizer.zero_grad()
             if (step+1)%config.print_loss_step==0:
                 print("epoch : %d , step : %d , loss %.3f"%(epoch,step,loss/(config.print_loss_step)))
-                training_loss_record.append(loss/config.print_loss_step)
-                writer.add_scalar("loss/train",loss/config.print_loss_step,(step+1)//config.print_loss_step)
                 loss=0
 
             if (step+1)%config.test_step==0:
-                test_loss,f1_score,em_value=test(model,config,test_dataloader,eval_examples)
-
-                writer.add_scalar("loss/test",test_loss,(step+1)//config.test_step)
-                writer.add_scalar("em/test",em_value,(step+1)//config.test_step)
-                writer.add_scalar("f1/test",f1_score,(step+1)//config.test_step)
-
-                test_loss_record.append(test_loss)
-                test_f1_record.append(f1_score)
-                test_em_record.append(em_value)
-
+                test_loss,f1_score,em_value=test(model,config,test_dataloader,test_eval_examples)
+                model.train()
                 scheduler.step(test_loss)#监控test_loss
                 print("epoch : %d , step : %d , learning rate : %f , test loss : %.3f , f1_score : %.3f , em_value : %.3f"%(epoch,step,optimizer.param_groups[0]["lr"],test_loss,f1_score,em_value))
-                if f1_score>best_f1_score:
-                    output_model_file=os.path.join(config.save_model_path,
-                                                "model"+str(f1_score).split(".")[1][:3]+".bin")
-                    torch.save(model.state_dict(),output_model_file)
-                    print("Save model to ",output_model_file)
-                    best_f1_score=f1_score
-                model.train()
-    with open("./log.pkl","wb") as f:
-        obj=[training_loss_record,test_loss_record,test_f1_record,test_em_record]
-        pickle.dump(obj,f)
+
+    train_epoch_loss,train_epoch_f1,train_epoch_em=test(model,config,train_dataloader,train_eval_examples)
+    test_epoch_loss,test_epoch_f1,test_epoch_em=test(model,config,test_dataloader,test_eval_examples)
+    writer.add_scalar("em/train",train_epoch_em,epoch)
+    writer.add_scalar("f1/train",train_epoch_f1,epoch)
+    writer.add_scalar("em/test",test_epoch_em,epoch)
+    writer.add_scalar("f1/test",test_epoch_f1,epoch)
+    writer.add_scalar("loss/train",train_epoch_loss,epoch)
+    writer.add_scalar("loss/test",test_epoch_loss,epoch)
+    model.train()
+    print("In train : epoch : %d , epoch_loss : %.3f , epoch_f1 : %.3f , epoch_em : %.3f"%(epoch,train_epoch_loss,train_epoch_f1,train_epoch_em))
+    print("In test : epoch : %d , epoch_loss : %.3f , epoch_f1 : %.3f , epoch_em : %.3f"%(epoch,test_epoch_loss,test_epoch_f1,test_epoch_em))
+    if test_epoch_f1>best_f1_score:
+        best_f1_score=test_epoch_f1
+        output_model_file=os.path.join(config.save_model_path,"model"+str(best_f1_score).split(".")[1][:3]+".bin")
+        torch.save(model.state_dict(),output_model_file)
+        print("Save model to ",output_model_file)
+
+
     writer.close()
 
 
@@ -135,16 +127,16 @@ class Config:
         self.learning_rate=0.001
         self.epochs=20
         self.gradient_accumulation_steps=1
-        self.print_loss_step=100
-        self.data_folder="/home/sun_xh/xhsun/ChineseMRC/data"
+        self.print_loss_step=50
+        self.data_folder="/home/xhsun/Desktop/ChineseMRC/cmrc/data"
         self.files_name=["my_cmrc2018.json","my_dureader.json","my_military.json","my_cail2019.json"]
         self.train_batch_size=48
         self.test_batch_size=48
-        self.test_step=300
-        self.save_model_path="/home/sun_xh/xhsun/ChineseMRC/saved_best_model/"
-        self.log_dir="/home/sun_xh/xhsun/ChineseMRC/log_dir/"
-        self.train_file_path="/home/sun_xh/xhsun/ChineseMRC/data/train_wordlevel.json"
-        self.test_file_path="/home/sun_xh/xhsun/ChineseMRC/data/test_wordlevel.json"
+        self.test_step=100
+        self.save_model_path="/home/xhsun/Desktop/ChineseMRC/cmrc/saved_best_model/"
+        self.log_dir="/home/xhsun/Desktop/ChineseMRC/cmrc/log_dir/"
+        self.train_file_path="/home/xhsun/Desktop/ChineseMRC/cmrc/data/train_wordlevel.json"
+        self.test_file_path="/home/xhsun/Desktop/ChineseMRC/cmrc/data/test_wordlevel.json"
 
     def add_vocab_size(self,vocab_size):
         self.vocab_size=vocab_size
@@ -171,7 +163,8 @@ def main():
     train_dataloader=get_dataloader(train_features,batch_size=config.train_batch_size)
     test_dataloader=get_dataloader(test_features,batch_size=config.test_batch_size,is_train=False)
 
-    train(config,train_dataloader=train_dataloader,test_dataloader=test_dataloader,eval_examples=test_eval_examples)
+    train(config,train_dataloader=train_dataloader,test_dataloader=test_dataloader,
+            train_eval_examples=train_eval_examples,test_eval_examples=test_eval_examples)
 
 
 main()

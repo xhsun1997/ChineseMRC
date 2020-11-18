@@ -55,14 +55,14 @@ class LSTM(nn.Module):
             nn.init.kaiming_normal_(getattr(self.rnn,f'weight_ih_l{i}'))
             nn.init.constant_(getattr(self.rnn,f'bias_hh_l{i}'),val=0)
             nn.init.constant_(getattr(self.rnn,f'bias_ih_l{i}'),val=0)
-            getattr(self.rnn,f'bias_hh_l{i}').chunk(4)[1].fill_(1)#将bias_hh_l[k]分成4块，第二块的张量用1填充，注意到第二块tensor为b_{hf}
+            #getattr(self.rnn,f'bias_hh_l{i}').chunk(4)[1].fill_(1)#将bias_hh_l[k]分成4块，第二块的张量用1填充，注意到第二块tensor为b_{hf}
 
             if self.rnn.bidirectional:
                 nn.init.orthogonal_(getattr(self.rnn,f'weight_hh_l{i}_reverse'))#正交初始化可以缓解gradient vanish and gradient exploration
                 nn.init.kaiming_normal_(getattr(self.rnn,f"weight_ih_l{i}_reverse"))
                 nn.init.constant_(getattr(self.rnn,f"bias_ih_l{i}_reverse"),val=0)
                 nn.init.constant_(getattr(self.rnn,f"bias_hh_l{i}_reverse"),val=0)
-                getattr(self.rnn,f"bias_hh_l{i}_reverse").chunk(4)[1].fill_(1)
+                #getattr(self.rnn,f"bias_hh_l{i}_reverse").chunk(4)[1].fill_(1)
 
     def forward(self,inputs,inputs_length):
         '''
@@ -85,7 +85,7 @@ class LSTM(nn.Module):
         inputs_sorted=inputs.index_select(0,input_length_ids)
         _,original_index=torch.sort(input_length_ids)
 
-        packed_inputs=torch.nn.utils.rnn.pack_padded_sequence(inputs_sorted,inputs_length_sorted,batch_first=True,enforce_sorted=True)
+        packed_inputs=torch.nn.utils.rnn.pack_padded_sequence(inputs_sorted,inputs_length_sorted.cpu(),batch_first=True,enforce_sorted=True)
         rnn_output_packed,(h,c)=self.rnn(packed_inputs)
 
         rnn_output,packed_length=torch.nn.utils.rnn.pad_packed_sequence(rnn_output_packed,batch_first=True)
@@ -101,9 +101,9 @@ class LSTM(nn.Module):
         return rnn_output
 
 
-class BiDAF(nn.Module):
+class Model(nn.Module):
     def __init__(self,config,pretrained_word_embedding=None):
-        super(BiDAF,self).__init__()
+        super(Model,self).__init__()
         self.args=config
         if pretrained_word_embedding is None:
             self.word_embedding=nn.Embedding(self.args.vocab_size,self.args.embed_dim,padding_idx=0)
@@ -189,8 +189,8 @@ class BiDAF(nn.Module):
     def forward(self,context_ids,question_ids):
         context_ids=context_ids.to(device)
         question_ids=question_ids.to(device)
-        context_lengths=torch.sum(context_ids.bool().long(),1).to(device)
-        question_lengths=torch.sum(question_ids.bool().long(),1).to(device)
+        context_lengths=torch.sum(context_ids.bool().long(),1)#.to(device)
+        question_lengths=torch.sum(question_ids.bool().long(),1)#.to(device)
 
         context_embeddings=self.word_embedding(context_ids)
         question_embeddings=self.word_embedding(question_ids)
