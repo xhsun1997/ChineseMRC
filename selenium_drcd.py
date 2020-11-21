@@ -32,14 +32,15 @@ def get_text(text):
         return None
 
 
-def get_simple_DRCD(file_path,all_json_file):
-    simple_text_examples=[]
+def get_simple_DRCD(file_path,all_json_file,write_path):
     bad_context=0
     total_context=0
     except_nums=0
+    f_write=open(write_path,"w",encoding="utf-8")
     for each_json_file in all_json_file:
         with open(os.path.join(file_path,each_json_file),encoding="utf-8") as f:
             test_data=json.load(f)["data"]
+        simple_text_examples=[]
         for each_example in test_data:
             paragraphs=each_example["paragraphs"]
             for each_qas in paragraphs:
@@ -69,17 +70,19 @@ def get_simple_DRCD(file_path,all_json_file):
                         #现在出现了context中有多个位置出现了答案中的单词，但是这些位置都不是答案真正应该在的位置
                         bad_context+=1
                         continue
-                    simple_text_examples.append({"context":simple_context,"question":simple_question,
-                                                 "answer":{"text":simple_answer,"start_position":answer_start}})
+                    each_example={"context":simple_context,"question":simple_question,
+                                                 "answer":{"text":simple_answer,"start_position":answer_start}}
+                    f_write.write(json.dumps(each_example,ensure_ascii=False)+"\n")
+    f_write.close()
+
+        
     print("total examples get from DRCD : %d , bad examples in DRCD : %d "%(total_context,bad_context))
     print("Exception example nums : ",except_nums)
-    return simple_text_examples
     
 if __name__=="__main__":
     file_path="C:\\Users\\Tony Sun\\Desktop\\Chinese MRC Data\\drcd"
     all_json_file=os.listdir(file_path)
-    simple_text_examples=get_simple_DRCD(file_path=file_path,all_json_file=all_json_file)
-    with open("C:\\Users\\Tony Sun\\Desktop\\Chinese MRC Data\\my_drcd.json","w",encoding='utf-8') as f:
-        for each_example in simple_text_examples:
-            f.write(json.dumps(each_example,ensure_ascii=False)+"\n")
+    write_path="C:\\Users\\Tony Sun\\Desktop\\Chinese MRC Data\\my_drcd.json"
+    get_simple_DRCD(file_path=file_path,all_json_file=all_json_file,write_path=write_path)
+    
     
